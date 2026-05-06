@@ -1,0 +1,11 @@
+pi:
+  host: raspberrypi.local
+  user: pi
+  port: 22
+  ssh_key: ~/.ssh/id_ed25519
+  target_dir: /home/pi/Videos
+local:
+  source_dir: ./videos_to_send
+rename:
+  enabled: true
+  video_extensions: [.mp4, .mkv, .mov, .avi, .webm]
