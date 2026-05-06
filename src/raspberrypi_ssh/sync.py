@@ -65,11 +65,12 @@ def sync_videos(
             desc=label,
             leave=True,
         ) as bar:
-            last_sent = [0]
+            last_sent = 0
 
             def _progress(filename: str, size: int, sent: int) -> None:
-                bar.update(sent - last_sent[0])
-                last_sent[0] = sent
+                nonlocal last_sent
+                bar.update(sent - last_sent)
+                last_sent = sent
 
             success = False
             for attempt in range(1, 3):  # try twice

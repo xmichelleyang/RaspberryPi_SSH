@@ -104,9 +104,7 @@ def _extract_series_info(text: str) -> tuple[str, int, str, str]:
             after = text[m.end() :].strip()
             season = int(m.group(1))
             raw_ep = m.group(2)
-            # Normalise multi-episode like "E03-E04" → "03-E04"
-            ep_str = re.sub(r"e", "", raw_ep, flags=re.IGNORECASE)
-            # episode_str should be zero-padded
+            # Zero-pad each episode part, joining multi-ep with -E
             parts = re.split(r"[-]", raw_ep, flags=re.IGNORECASE)
             ep_str = "-E".join(f"{int(re.sub(r'[eE]', '', p)):02d}" for p in parts)
             return before, season, ep_str, after
