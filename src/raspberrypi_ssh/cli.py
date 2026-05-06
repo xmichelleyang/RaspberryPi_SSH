@@ -84,6 +84,9 @@ def cmd_rename(args: argparse.Namespace, cfg: dict) -> int:
         return 0
 
     # Confirmation prompt when applying
+    if not sys.stdin.isatty():
+        print("Non-interactive mode: skipping confirmation, aborting rename.", file=sys.stderr)
+        return 1
     answer = input(f"\nRename {len(changes)} file(s) on disk? [y/N] ").strip().lower()
     if answer != "y":
         print("Aborted.")
@@ -136,6 +139,27 @@ def cmd_setup_ssh(args: argparse.Namespace, cfg: dict) -> int:
         print(f"Key already exists: {key_path}")
 
     pi = cfg["pi"]
+
+    # Add the Pi's host key to known_hosts so RejectPolicy accepts it
+    known_hosts = Path.home() / ".ssh" / "known_hosts"
+    print(f"Adding {pi['host']} host key to {known_hosts} ...")
+    result = subprocess.run(
+        ["ssh-keyscan", "-p", str(pi["port"]), "-H", pi["host"]],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        known_hosts.parent.mkdir(parents=True, exist_ok=True)
+        with known_hosts.open("a") as fh:
+            fh.write(result.stdout)
+        print("Host key added.")
+    else:
+        print(
+            f"Warning: could not retrieve host key for {pi['host']} — "
+            "ensure the Pi is reachable and SSH is enabled.",
+            file=sys.stderr,
+        )
+
     target = f"{pi['user']}@{pi['host']}"
     print(f"Installing public key on {target} (you may be prompted for the Pi password) ...")
     subprocess.run(["ssh-copy-id", "-i", str(key_path) + ".pub", "-p", str(pi["port"]), target])

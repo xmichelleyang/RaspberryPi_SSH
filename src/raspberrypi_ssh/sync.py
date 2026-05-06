@@ -11,6 +11,8 @@ from .ssh_client import RpiSSHClient
 
 logger = logging.getLogger(__name__)
 
+MAX_UPLOAD_ATTEMPTS = 2
+
 
 def _get_local_files(source_dir: Path, extensions: list[str]) -> list[Path]:
     files = []
@@ -73,7 +75,7 @@ def sync_videos(
                 last_sent = sent
 
             success = False
-            for attempt in range(1, 3):  # try twice
+            for attempt in range(1, MAX_UPLOAD_ATTEMPTS + 1):  # retry once on failure
                 try:
                     client.upload_file(lf, remote_dir, _progress)
                     success = True
@@ -85,7 +87,7 @@ def sync_videos(
             if success:
                 transferred += 1
             else:
-                logger.error("Failed to transfer %s after 2 attempts", lf.name)
+                logger.error("Failed to transfer %s after %d attempts", lf.name, MAX_UPLOAD_ATTEMPTS)
                 failed += 1
 
     return transferred, failed

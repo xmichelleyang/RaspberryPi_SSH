@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
+import stat
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
 import paramiko
@@ -40,7 +41,9 @@ class RpiSSHClient:
     def connect(self) -> None:
         client = paramiko.SSHClient()
         client.load_system_host_keys()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # RejectPolicy: refuse connections to hosts not in known_hosts.
+        # Run `rpi-sync setup-ssh` to add your Pi's host key first.
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
         try:
             client.connect(
                 hostname=self.host,
@@ -52,6 +55,13 @@ class RpiSSHClient:
             )
         except paramiko.AuthenticationException as exc:
             raise SSHConnectionError(f"Authentication failed for {self.user}@{self.host}") from exc
+        except paramiko.SSHException as exc:
+            if "not found in known_hosts" in str(exc) or "Unknown server" in str(exc):
+                raise SSHConnectionError(
+                    f"Host key for {self.host} not found in known_hosts. "
+                    "Run `rpi-sync setup-ssh` to add it."
+                ) from exc
+            raise SSHConnectionError(f"Cannot connect to {self.host}:{self.port} — {exc}") from exc
         except Exception as exc:
             raise SSHConnectionError(f"Cannot connect to {self.host}:{self.port} — {exc}") from exc
         self._client = client
@@ -83,18 +93,20 @@ class RpiSSHClient:
         return stdout.read().decode(), stderr.read().decode()
 
     def list_remote_dir(self, remote_dir: str) -> list[dict]:
-        """Return list of {name, size} dicts for files in *remote_dir*."""
-        out, _ = self.run(f"ls -l {remote_dir} 2>/dev/null || true")
-        entries = []
-        for line in out.splitlines():
-            parts = line.split()
-            # -rw-r--r-- 1 pi pi 1234567 Jan 1 12:00 filename.mkv
-            if len(parts) >= 9 and parts[0].startswith("-"):
-                try:
-                    entries.append({"name": parts[8], "size": int(parts[4])})
-                except (IndexError, ValueError):
-                    continue
-        return entries
+        """Return list of {name, size} dicts for regular files in *remote_dir*."""
+        sftp = self._ssh().open_sftp()
+        try:
+            try:
+                attrs = sftp.listdir_attr(remote_dir)
+            except FileNotFoundError:
+                return []
+            return [
+                {"name": a.filename, "size": a.st_size}
+                for a in attrs
+                if stat.S_ISREG(a.st_mode or 0)
+            ]
+        finally:
+            sftp.close()
 
     def upload_file(
         self,
@@ -111,4 +123,16 @@ class RpiSSHClient:
             scp.put(str(local_path), remote_path=remote_dir)
 
     def mkdir(self, remote_dir: str) -> None:
-        self.run(f"mkdir -p {remote_dir}")
+        """Create *remote_dir* and all parent directories on the Pi."""
+        sftp = self._ssh().open_sftp()
+        try:
+            parts = PurePosixPath(remote_dir).parts
+            current = PurePosixPath(parts[0])
+            for part in parts[1:]:
+                current = current / part
+                try:
+                    sftp.mkdir(str(current))
+                except OSError:
+                    pass  # directory already exists
+        finally:
+            sftp.close()
