@@ -100,11 +100,7 @@ def cmd_push(args: argparse.Namespace, cfg: dict) -> int:
     exts = cfg["rename"]["video_extensions"]
 
     if args.rename:
-        # Run rename first (apply mode with prompt)
-        class _FakeArgs:
-            apply = True
-
-        ret = cmd_rename(_FakeArgs(), cfg)
+        ret = cmd_rename(argparse.Namespace(apply=True), cfg)
         if ret != 0:
             return ret
 
@@ -202,7 +198,7 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    cfg = load_config(args.config if hasattr(args, "config") else None)
+    cfg = load_config(getattr(args, "config", None))
 
     handlers = {
         "rename": cmd_rename,
